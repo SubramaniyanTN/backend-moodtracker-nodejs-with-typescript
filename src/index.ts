@@ -1,11 +1,16 @@
 import express from 'express'
 import dotenv from 'dotenv'
 import { connectDB } from './utils/connectDB'
+import { RouteNotFound } from './utils/routeNotFound'
+import defaultErrorHandler from './ErrorHandler/defaultErrorBoundary'
 dotenv.config()
 
 
 
 const app=express()
+
+app.use(RouteNotFound)
+app.use(defaultErrorHandler)
 
 
 const uri=process.env.MONGO_URI
