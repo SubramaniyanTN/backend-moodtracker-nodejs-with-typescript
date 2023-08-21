@@ -6,8 +6,7 @@ dotenv.config();
 const senderEmailId=process.env.EMAIL_ID
 const senderEmailPassword=process.env.EMAIL_ID_PASSWORD
 
-export const emailSender = async (req:Request, res:Response) => {
-  console.log("Consoling");
+export const emailSender = async (otp:string,emailId:string) => {
   try {
     const transporter = nodemailer.createTransport({
       service: "Gmail",
@@ -19,13 +18,11 @@ export const emailSender = async (req:Request, res:Response) => {
 
     const info = await transporter.sendMail({
       from: senderEmailId,
-      to: "subramaniyanmaddy@gmail.com",
-      subject: "Just a node mailer testing mail",
-      text: "This is a testing mail id from Mood tracker App ",
+      to: emailId,
+      subject: "OTP for Mood tracker",
+      text: `confirm OTP for mood tracker login = ${otp}`,
     });
-    res.status(200).json({
-      info: info,
-    });
+    return info
   } catch (error) {
     console.log(error);
   }
