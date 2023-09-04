@@ -10,7 +10,15 @@ import { OTPSavingModel } from '@src/Model/otpSaving.model';
 
 export const signUp = asyncWrapper(async (req: Request, res: Response) => {
   const { firstName, lastName, emailID, password } = req.body;
-  console.log(firstName, lastName, emailID, password);
+  const emailIDExists = await User.findOne({ emailID: emailID });
+  if (emailIDExists && !emailIDExists.isVerified) {
+    const otp = otpGenerate();
+    const otpSaved = await new OTPSavingModel({ userId: emailIDExists._id, otp: await bcrypt.hash(otp, 10) }).save();
+    emailSender(otp, emailIDExists.emailID);
+    return res.status(403).json({
+      msg: 'Email already exists but you are not verified yet ,OTP is send to your mail , please verify it and login',
+    });
+  }
   if (!passwordRegex.test(password))
     return res.status(203).json({
       msg: 'Password must be more than 6 characters , must contain one upper case , one special characters and one number',
@@ -32,18 +40,30 @@ export const signUp = asyncWrapper(async (req: Request, res: Response) => {
 export const login = asyncWrapper(async (req: Request, res: Response) => {
   const userFromDB = await User.findOne({ emailID: req.body.emailID });
   if (!userFromDB) return res.status(404).json('Invalid Email or Password');
+  const passwordCompare = await bcrypt.compare(req.body.password, userFromDB?.password);
+  if (passwordCompare && !userFromDB.isVerified) {
+    const otp = otpGenerate();
+    const otpSaved = await new OTPSavingModel({ userId: userFromDB._id, otp: await bcrypt.hash(otp, 10) }).save();
+    emailSender(otp, userFromDB.emailID);
+    return res.status(403).json({
+      msg: 'You are not verified yet ,OTP is send to your mail , please verify it and login',
+    });
+  }
   if (!userFromDB.isVerified) {
     const otp = otpGenerate();
-    const otpAlreadyInDB=await OTPSavingModel.findOne({userId:userFromDB._id})
-    if(otpAlreadyInDB){
-      const otpSaved=await OTPSavingModel.findOneAndUpdate({userId:userFromDB._id},{otp: await bcrypt.hash(otp, 10)},{new:true})
-    }else{
+    const otpAlreadyInDB = await OTPSavingModel.findOne({ userId: userFromDB._id });
+    if (otpAlreadyInDB) {
+      const otpSaved = await OTPSavingModel.findOneAndUpdate(
+        { userId: userFromDB._id },
+        { otp: await bcrypt.hash(otp, 10) },
+        { new: true }
+      );
+    } else {
       const otpSaved = await new OTPSavingModel({ userId: userFromDB._id, otp: await bcrypt.hash(otp, 10) }).save();
     }
     emailSender(otp, userFromDB.emailID);
-    return res.status(401).json({msg:"OTP Sent to your mail , please verify account"})
+    return res.status(401).json({ msg: 'OTP Sent to your mail , please verify account' });
   }
-  const passwordCompare = await bcrypt.compare(req.body.password, userFromDB?.password);
   if (!passwordCompare) return res.status(401).json({ msg: 'Invalid Email or Password' });
   const accessToken = accessTokenGenerator({ type: 'login', data: userFromDB.toJSON() });
   const refreshToken = refreshTokenGenerator({ type: 'login', data: userFromDB.toJSON() });
@@ -57,4 +77,18 @@ export const otpVerifier = async (req: Request, res: Response) => {
   if (!otpMatch) return res.status(401).json({ msg: 'OTP Mismatch' });
   const userUpdated = await User.findOneAndUpdate({ _id: req.body.userId }, { isVerified: true }, { new: true });
   return res.status(200).json({ msg: 'user verified successfully', userUpdated });
+};
+
+export const resendOTP = async (req: Request, res: Response) => {
+  const userExists = await User.findOne({ emailID: req.body.emailID });
+  if (!userExists) return res.status(404).json({ msg: 'User not found ' });
+  const otpExists = await OTPSavingModel.findOne({ userId: userExists._id });
+  const otp = otpGenerate();
+  if (otpExists) {
+    const otpUpdate = await OTPSavingModel.findOneAndUpdate({ userId: req.body.emailID }, { otp: otp }, { new: true });
+  } else {
+    const otpSaved = await new OTPSavingModel({ userId: userExists._id, otp: await bcrypt.hash(otp, 10) }).save();
+  }
+  emailSender(otp, req.body.emailID);
+  return res.status(200).json({msg:"OTP sent successfully"})
 };
